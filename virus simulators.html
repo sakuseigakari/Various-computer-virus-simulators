@@ -1,0 +1,1237 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ウイルスシミュレーター</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Custom styles for the app */
+        body {
+            font-family: "Inter", sans-serif;
+            background-color: #f0f4f8; /* Light gray background */
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            margin: 0;
+            overflow-x: hidden; /* Prevent horizontal scroll */
+            cursor: default; /* マウスカーソルをデフォルトに */
+            transition: transform 0.1s ease-out; /* 揺れ解除時のスムーズな戻り */
+        }
+        .container {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 1.5rem;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10; /* 他のオーバーレイより手前に */
+            position: relative;
+        }
+        .virus-effect-overlay { /* 既存のオーバーレイだが、今回は直接使わない */
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Allow interaction with elements underneath */
+            z-index: 9999; /* Ensure it's on top */
+        }
+        .error-message {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: #ef4444; /* Red background */
+            color: white;
+            padding: 1.5rem 2rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            font-size: 1.25rem;
+            font-weight: bold;
+            z-index: 10000;
+            animation: shake-element 0.5s infinite; /* Add a shake animation for this element */
+        }
+
+        /* Keyframes for shake animation for specific elements */
+        @keyframes shake-element {
+            0% { transform: translate(-50%, -50%) rotate(0deg); }
+            25% { transform: translate(-52%, -48%) rotate(1deg); }
+            50% { transform: translate(-48%, -52%) rotate(-1deg); }
+            75% { transform: translate(-52%, -48%) rotate(1deg); }
+            100% { transform: translate(-50%, -50%) rotate(0deg); }
+        }
+
+        /* 全画面揺れアニメーション */
+        .full-screen-shake-active {
+            animation: full-screen-shake 0.1s infinite alternate; /* 揺れ速度を高速化 */
+        }
+
+        @keyframes full-screen-shake {
+            0% { transform: translate(0, 0); }
+            25% { transform: translate(-4px, 4px); } /* 揺れ幅を少し大きく */
+            50% { transform: translate(4px, -4px); }
+            75% { transform: translate(-4px, 4px); }
+            100% { transform: translate(0, 0); }
+        }
+
+        /* Glitch effect for screen (using a dedicated overlay now) */
+        .glitch-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* クリックを透過 */
+            z-index: 9998; /* ポップアップより下に、コンテンツより上に */
+            opacity: 0;
+            transition: opacity 0.1s ease-out;
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 10 10"><rect width="5" height="5" fill="black"/><rect x="5" y="5" width="5" height="5" fill="white"/></svg>'); /* ドットパターン */
+            background-size: 5px 5px;
+        }
+        .glitch-active .glitch-overlay {
+            opacity: 0.05; /* 薄いノイズ */
+        }
+        .glitch-active.strong .glitch-overlay {
+             opacity: 0.15; /* 強いノイズ */
+        }
+
+        /* 画面の色反転 */
+        .invert-colors {
+            filter: invert(100%);
+        }
+        /* 画面点滅 */
+        .flicker-colors {
+            animation: flicker-animation 0.1s infinite alternate;
+        }
+        @keyframes flicker-animation {
+            0% { opacity: 1; }
+            50% { opacity: 0.8; }
+            100% { opacity: 1; }
+        }
+
+
+        /* Cursor jitter effect (old, replaced by corrupted-cursor) */
+        .jitter-cursor {
+            cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-mouse-pointer-2"><path d="m4 4 7.07 17 2.51-7.39L17 11.07Z"/><path d="m11.07 11.07 7.39 2.51L17 17Z"/></svg>') 12 12, auto !important;
+            animation: jitter 0.1s infinite alternate;
+        }
+
+        @keyframes jitter {
+            0% { transform: translate(0, 0); }
+            50% { transform: translate(1px, 1px); }
+            100% { transform: translate(-1px, -1px); }
+        }
+
+        /* マウスカーソル異常 (新しい方) */
+        .corrupted-cursor {
+            cursor: none !important; /* カーソルを非表示に */
+        }
+        .extra-cursor {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background-color: rgba(255, 0, 0, 0.5); /* 赤い半透明の四角 */
+            pointer-events: none; /* クリックを透過 */
+            border-radius: 50%;
+            z-index: 10001;
+        }
+
+
+        /* Text scramble effect */
+        .scrambled-text {
+            /* This will be applied to elements whose text content is scrambled */
+            font-family: 'Courier New', monospace; /* Monospace font for scrambled look */
+            letter-spacing: 0.1em;
+        }
+
+        /* Overlay for slowdown effect */
+        .slowdown-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.1); /* Slight darkening */
+            backdrop-filter: blur(2px); /* Slight blur */
+            z-index: 9990;
+            pointer-events: none; /* Allow clicks to pass through */
+        }
+
+        /* 動的に生成されるポップアップのスタイル */
+        .popup { /* 既存の.popupを更新 */
+            position: fixed;
+            background-color: #ffffff;
+            border: 2px solid #ef4444; /* 赤い枠線 */
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 5px 15px rgba(0, 0, 0, 0.1);
+            border-radius: 0.5rem; /* 少し丸みを帯びる */
+            padding: 1rem; /* p-4 */
+            text-align: center;
+            width: 280px; /* ポップアップの幅を調整 */
+            z-index: 10001; /* 最前面に表示 */
+            transition: background-color 0.05s ease-out; /* 背景色の変化を高速化 */
+            will-change: transform, background-color; /* パフォーマンス向上のため */
+            color: #991b1b; /* テキスト色を赤に */
+            font-weight: 600; /* 太字 */
+            user-select: none; /* テキスト選択を無効化 */
+        }
+        .popup-title { /* .popup-title に変更 */
+            font-size: 1.1rem; /* 少し大きめ */
+            font-weight: 700; /* さらに太字 */
+            margin-bottom: 0.5rem;
+            color: #991b1b;
+        }
+        .popup-content { /* .popup-content に変更 */
+            font-size: 0.9rem; /* 少し大きめ */
+            line-height: 1.4;
+            margin-bottom: 0.75rem;
+        }
+        .popup-button { /* .popup-button に変更 */
+            display: inline-block;
+            margin-top: 0.5rem;
+            padding: 0.4rem 0.8rem;
+            font-size: 0.9rem;
+            border-radius: 0.25rem;
+            background-color: #ef4444; /* 赤いボタン */
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+        .popup-button:hover {
+            background-color: #dc2626;
+        }
+        /* OKボタンが押された時のフィードバック用スタイル */
+        .popup.feedback-ignored {
+            background-color: #fef2f2; /* 薄い赤 */
+            border-color: #b91c1c; /* 濃い赤 */
+        }
+
+        /* 警告の種類に応じた追加スタイル */
+        .popup.type-critical {
+            background-color: #fee2e2; /* 非常に明るい赤 */
+            border-color: #b91c1c; /* 暗い赤 */
+            animation: pulse-critical 0.8s infinite alternate; /* 鼓動するアニメーション */
+        }
+        @keyframes pulse-critical {
+            0% { transform: scale(1); box-shadow: 0 0 5px #b91c1c; }
+            100% { transform: scale(1.02); box-shadow: 0 0 15px #ef4444; }
+        }
+
+        .popup.type-corrupted {
+            border-style: dashed; /* 破線ボーダー */
+            border-width: 3px;
+            filter: grayscale(50%); /* グレースケール */
+            opacity: 0.9;
+        }
+
+        /* フェイクシャットダウン画面 */
+        .fake-shutdown-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Inter', sans-serif;
+            font-size: 2rem;
+            z-index: 100000; /* 最前面 */
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.5s ease-out, visibility 0s linear 0.5s; /* 隠れるときは遅延 */
+        }
+        .fake-shutdown-overlay.active {
+            opacity: 1;
+            visibility: visible;
+            transition: opacity 0.5s ease-out, visibility 0s linear 0s; /* 表示時は遅延なし */
+        }
+        .fake-shutdown-overlay p {
+            margin-bottom: 1rem;
+        }
+        .fake-shutdown-overlay p:after { /* ドットアニメーション */
+            content: "";
+            animation: loading-dots 1s infinite steps(3, end);
+        }
+        @keyframes loading-dots {
+            0%, 20% { content: "."; }
+            40% { content: ".."; }
+            60%, 100% { content: "..."; }
+        }
+
+        /* 偽のブルースクリーン（BSOD） */
+        .bsod-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #0000AA; /* Windows BSOD Blue */
+            color: #FFFFFF;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 1.2rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            align-items: flex-start;
+            padding: 50px;
+            box-sizing: border-box;
+            z-index: 100001; /* 最前面 */
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.5s ease-out, visibility 0s linear 0.5s;
+        }
+        .bsod-overlay.active {
+            opacity: 1;
+            visibility: visible;
+            transition: opacity 0.5s ease-out, visibility 0s linear 0s;
+        }
+        .bsod-overlay h1 {
+            font-size: 3rem;
+            margin-bottom: 20px;
+        }
+        .bsod-overlay p {
+            margin-bottom: 10px;
+        }
+        .bsod-overlay .qr-code {
+            width: 100px;
+            height: 100px;
+            background-color: #fff;
+            margin-top: 30px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 0.6rem;
+            color: #000;
+        }
+
+        /* 偽のファイル削除/スキャン進行バー */
+        .progress-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.9);
+            color: #00FF00; /* 緑色のテキスト */
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100002; /* 最前面 */
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.5s ease-out, visibility 0s linear 0.5s;
+        }
+        .progress-overlay.active {
+            opacity: 1;
+            visibility: visible;
+            transition: opacity 0.5s ease-out, visibility 0s linear 0s;
+        }
+        .progress-overlay .progress-bar {
+            width: 80%;
+            max-width: 600px;
+            height: 20px;
+            background-color: #333;
+            border: 1px solid #00FF00;
+            margin-top: 20px;
+            overflow: hidden;
+        }
+        .progress-overlay .progress-fill {
+            height: 100%;
+            width: 0%;
+            background-color: #00FF00;
+            animation: progress-fill-animation 3s linear infinite; /* 3秒で無限ループ */
+        }
+        @keyframes progress-fill-animation {
+            0% { width: 0%; }
+            100% { width: 100%; }
+        }
+        .progress-overlay .status-text {
+            margin-top: 10px;
+            font-size: 1rem;
+        }
+    </style>
+</head>
+<body class="selection:bg-blue-200 selection:text-blue-800">
+    <div class="glitch-overlay" id="glitchOverlay"></div> <div class="container bg-white shadow-lg rounded-xl p-8 my-8 text-center flex flex-col items-center">
+        <h1 class="text-4xl font-bold text-gray-800 mb-4" id="mainTitle">ウイルスシミュレーター</h1>
+        <p class="text-gray-600 mb-8 text-lg leading-relaxed" id="mainDescription">
+            これはコンピューターウイルスの影響をシミュレートする体験アプリです。
+            実際のウイルスではありませんので、ご安心ください。
+            以下のボタンをクリックして、さまざまな「ウイルス」効果を体験してみましょう。
+        </p>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8 w-full max-w-2xl">
+            <button id="popupVirusBtn" class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105">
+                無限ポップアップ
+            </button>
+            <button id="glitchVirusBtn" class="bg-green-500 hover:bg-green-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105">
+                画面ノイズ
+            </button>
+            <button id="errorVirusBtn" class="bg-red-500 hover:bg-red-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105">
+                偽エラーメッセージ (揺れ)
+            </button>
+            <button id="slowdownVirusBtn" class="bg-purple-500 hover:bg-purple-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105">
+                動作遅延
+            </button>
+            <button id="jitterCursorBtn" class="bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105">
+                カーソル異常
+            </button>
+            <button id="scrambleTextBtn" class="bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105">
+                テキストスクランブル
+            </button>
+            <button id="fullScreenShakeBtn" class="bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105">
+                全画面揺れ
+            </button>
+            <button id="colorEffectBtn" class="bg-teal-500 hover:bg-teal-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105">
+                画面色反転/点滅
+            </button>
+            <button id="systemNoiseBtn" class="bg-pink-500 hover:bg-pink-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105">
+                システムノイズ音
+            </button>
+            <button id="fakeShutdownBtn" class="bg-gray-500 hover:bg-gray-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105">
+                偽シャットダウン
+            </button>
+            <button id="bsodBtn" class="bg-blue-700 hover:bg-blue-800 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105">
+                偽ブルースクリーン
+            </button>
+            <button id="progressBarBtn" class="bg-green-700 hover:bg-green-800 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105">
+                偽進行バー
+            </button>
+        </div>
+
+        <div id="contentToScramble" class="text-gray-700 mt-8 p-4 border border-gray-300 rounded-lg bg-gray-50 max-w-2xl text-left">
+            <h2 class="text-2xl font-semibold mb-2">このテキストはスクランブルされます</h2>
+            <p>
+                これは、テキストスクランブル効果をテストするためのサンプルテキストです。
+                この段落の文字がランダムに並び替えられる様子を観察できます。
+                アプリの機能を示すためのものです。
+            </p>
+            <p class="mt-2">
+                コンピューターウイルスは、悪意のあるソフトウェアの一種で、
+                ユーザーの同意なしにコンピューターシステムに感染し、
+                さまざまな損害を引き起こす可能性があります。
+                このシミュレーターは、その一端を体験するためのものです。
+            </p>
+        </div>
+    </div>
+
+    <div class="fixed bottom-8 left-1/2 transform -translate-x-1/2 z-[100003]">
+        <button id="cleanBtn" class="bg-gray-700 hover:bg-gray-800 text-white font-semibold py-3 px-8 rounded-full shadow-lg transition duration-300 ease-in-out transform hover:scale-105">
+            すべてをクリーンアップ
+        </button>
+    </div>
+
+    <div id="fakeShutdownOverlay" class="fake-shutdown-overlay">
+        <p>システムをシャットダウンしています</p>
+        <p class="loading-dots-placeholder"></p>
+    </div>
+
+    <div id="bsodOverlay" class="bsod-overlay">
+        <h1>:(</h1>
+        <p>お使いのPCに問題が発生したため、再起動する必要があります。</p>
+        <p>エラー情報を収集しています。完了後、自動的に再起動します。</p>
+        <p>詳細については、オンラインで次のエラーを検索してください: CRITICAL_PROCESS_DIED</p>
+        <div class="qr-code">QR CODE</div>
+        <p class="mt-4">完了率: <span id="bsodProgress">0</span>%</p>
+    </div>
+
+    <div id="progressOverlay" class="progress-overlay">
+        <p id="progressTitle">ファイルをスキャン中...</p>
+        <div class="progress-bar">
+            <div class="progress-fill" id="progressFill"></div>
+        </div>
+        <p class="status-text" id="progressStatus">C:\Windows\System32\drivers\*.sys</p>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+
+    <script>
+        // Get references to buttons and elements
+        const popupVirusBtn = document.getElementById('popupVirusBtn');
+        const glitchVirusBtn = document.getElementById('glitchVirusBtn');
+        const errorVirusBtn = document.getElementById('errorVirusBtn');
+        const slowdownVirusBtn = document.getElementById('slowdownVirusBtn');
+        const jitterCursorBtn = document.getElementById('jitterCursorBtn');
+        const scrambleTextBtn = document.getElementById('scrambleTextBtn');
+        const fullScreenShakeBtn = document.getElementById('fullScreenShakeBtn');
+        const colorEffectBtn = document.getElementById('colorEffectBtn');
+        const systemNoiseBtn = document.getElementById('systemNoiseBtn');
+        const fakeShutdownBtn = document.getElementById('fakeShutdownBtn');
+        const bsodBtn = document.getElementById('bsodBtn');
+        const progressBarBtn = document.getElementById('progressBarBtn');
+        const cleanBtn = document.getElementById('cleanBtn');
+        const contentToScramble = document.getElementById('contentToScramble');
+        const body = document.body;
+        const glitchOverlay = document.getElementById('glitchOverlay');
+        const fakeShutdownOverlay = document.getElementById('fakeShutdownOverlay');
+        const bsodOverlay = document.getElementById('bsodOverlay');
+        const bsodProgress = document.getElementById('bsodProgress');
+        const progressOverlay = document.getElementById('progressOverlay');
+        const progressFill = document.getElementById('progressFill');
+        const progressTitle = document.getElementById('progressTitle');
+        const progressStatus = document.getElementById('progressStatus');
+        const mainTitle = document.getElementById('mainTitle');
+        const mainDescription = document.getElementById('mainDescription');
+
+        let activeEffects = {}; // Keep track of active effects for cleanup
+
+        let synth, noiseSynth, clickSound; // Tone.js synthesizers
+        let mouseCorruptionIntervalId; // マウスカーソル異常のインターバルID
+        let extraCursors = []; // 追加カーソルを追跡するための配列
+        let colorFlickerIntervalId; // 色反転/点滅のインターバルID
+        let scrambleIntervals = new Map(); // 各スクランブル要素のインターバルIDを保存
+        let originalScrambledElements = new Map(); // テキストスクランブルの元のテキストと要素を保存
+
+        const originalMainTitleText = mainTitle.textContent;
+        const originalMainDescriptionHTML = mainDescription.innerHTML;
+
+
+        // --- Utility Functions ---
+
+        /**
+         * Creates a new DOM element with specified tag, classes, and text content.
+         * @param {string} tag - The HTML tag name.
+         * @param {string} className - Space-separated CSS classes.
+         * @param {string} textContent - The text content of the element.
+         * @returns {HTMLElement} The created element.
+         */
+        function createElement(tag, className, textContent = '') {
+            const element = document.createElement(tag);
+            if (className) {
+                element.className = className;
+            }
+            if (textContent) {
+                element.textContent = textContent;
+            }
+            return element;
+        }
+
+        /**
+         * Generates a random integer between min (inclusive) and max (inclusive).
+         * @param {number} min
+         * @param {number} max
+         * @returns {number}
+         */
+        function getRandomInt(min, max) {
+            min = Math.ceil(min);
+            max = Math.floor(max);
+            return Math.floor(Math.random() * (max - min + 1)) + min;
+        }
+
+        /**
+         * Removes an element by its ID.
+         * @param {string} id - The ID of the element to remove.
+         */
+        function removeElementById(id) {
+            const element = document.getElementById(id);
+            if (element) {
+                element.remove();
+            }
+        }
+
+        // --- Tone.js Audio Setup ---
+        async function setupAudio() {
+            if (Tone.context.state !== 'running') {
+                await Tone.start();
+                console.log("AudioContext started");
+            }
+            if (!synth) {
+                synth = new Tone.Synth({
+                    oscillator: { type: "sawtooth" },
+                    envelope: { attack: 0.01, decay: 0.2, sustain: 0.1, release: 0.5 },
+                    volume: -10
+                }).toDestination();
+            }
+            if (!noiseSynth) {
+                noiseSynth = new Tone.NoiseSynth({
+                    noise: { type: 'pink' },
+                    envelope: { attack: 0.001, decay: 0.1, sustain: 0, release: 0.1 },
+                    volume: -20
+                }).toDestination();
+            }
+            if (!clickSound) {
+                 clickSound = new Tone.MembraneSynth({
+                    pitchDecay: 0.05,
+                    octaves: 8,
+                    envelope: {
+                        attack: 0.001,
+                        decay: 0.4,
+                        sustain: 0.01,
+                        release: 0.01,
+                    },
+                    volume: -15
+                }).toDestination();
+            }
+        }
+
+        // --- Virus Effects ---
+
+        /**
+         * Simulates a pop-up virus by creating multiple random, unclosable pop-up windows.
+         */
+        function activatePopupVirus() {
+            if (activeEffects.popup) return;
+            activeEffects.popup = true;
+            activeEffects.activePopups = []; // Initialize activePopups array
+
+            activeEffects.popupInterval = setInterval(() => {
+                const popup = document.createElement('div');
+                popup.className = 'popup';
+
+                const messages = [
+                    "システムに重大なエラーが発生しました！",
+                    "ウイルスが検出されました！",
+                    "データが破損しています！",
+                    "緊急！セキュリティ侵害！",
+                    "システムが応答していません！",
+                    "ファイルが削除されました！",
+                    "未知のプロセスが実行中です！",
+                    "ハードディスクがフォーマットされています！",
+                    "ネットワーク接続が遮断されました！",
+                    "警告：不正アクセス！",
+                    "メモリが不足しています！",
+                    "重要なシステムファイルが変更されました！"
+                ];
+                const randomMessage = messages[Math.floor(Math.random() * messages.length)];
+
+                const popupTypes = ['normal', 'critical', 'corrupted'];
+                const randomType = popupTypes[Math.floor(Math.random() * popupTypes.length)];
+
+                let title = "警告！";
+                if (randomType === 'critical') {
+                    popup.classList.add('type-critical');
+                    title = "緊急！致命的エラー！";
+                } else if (randomType === 'corrupted') {
+                    popup.classList.add('type-corrupted');
+                    title = "データ破損警告";
+                }
+
+                popup.originalContent = `
+                    <h2 class="popup-title">${title}</h2>
+                    <p class="popup-content">${randomMessage}<br>すぐに「OK」をクリックしてください。</p>
+                    <button class="popup-button">OK</button>
+                `;
+                popup.innerHTML = popup.originalContent;
+
+                document.body.appendChild(popup);
+                activeEffects.activePopups.push(popup); // Track popups
+
+                const popupWidth = popup.offsetWidth;
+                const popupHeight = popup.offsetHeight;
+
+                let currentX = Math.random() * (window.innerWidth - popupWidth);
+                let currentY = Math.random() * (window.innerHeight - popupHeight);
+                let dx = (Math.random() - 0.5) * 10;
+                let dy = (Math.random() - 0.5) * 10;
+                
+                if (dx === 0) dx = Math.random() < 0.5 ? -1 : 1;
+                if (dy === 0) dy = Math.random() < 0.5 ? -1 : 1;
+
+                popup.style.left = `${currentX}px`;
+                popup.style.top = `${currentY}px`;
+
+                function movePopup() {
+                    if (!popup.parentNode) {
+                        cancelAnimationFrame(popup.animationFrameId);
+                        return;
+                    }
+
+                    currentX += dx;
+                    currentY += dy;
+
+                    if (currentX + popupWidth > window.innerWidth || currentX < 0) {
+                        dx *= -1;
+                        currentX = Math.max(0, Math.min(currentX, window.innerWidth - popupWidth));
+                    }
+                    if (currentY + popupHeight > window.innerHeight || currentY < 0) {
+                        dy *= -1;
+                        currentY = Math.max(0, Math.min(currentY, window.innerHeight - popupHeight));
+                    }
+
+                    popup.style.left = `${currentX}px`;
+                    popup.style.top = `${currentY}px`;
+
+                    popup.animationFrameId = requestAnimationFrame(movePopup);
+                }
+
+                popup.animationFrameId = requestAnimationFrame(movePopup);
+
+                popup.querySelector('.popup-button').addEventListener('click', function handler() {
+                    const button = this;
+                    popup.innerHTML = `
+                        <h2 class="popup-title">エラー！</h2>
+                        <p class="popup-content">操作は無視されました。<br>システムは危険な状態です。</p>
+                        <button class="popup-button">OK</button>
+                    `;
+                    popup.classList.add('feedback-ignored');
+
+                    setTimeout(() => {
+                        popup.innerHTML = popup.originalContent;
+                        popup.classList.remove('feedback-ignored');
+                        popup.querySelector('.popup-button').addEventListener('click', handler);
+                    }, 300);
+                });
+            }, 80); // 80msごとに新しいポップアップを生成
+        }
+
+        /**
+         * Activates a visual glitch effect on the entire screen.
+         */
+        function activateGlitchVirus() {
+            if (activeEffects.glitch) return;
+            activeEffects.glitch = true;
+            glitchOverlay.classList.add('glitch-active');
+        }
+
+        /**
+         * Displays a persistent, unclosable fake error message.
+         */
+        function activateErrorVirus() {
+            if (activeEffects.error) return;
+            activeEffects.error = true;
+
+            const errorMessage = createElement('div', 'error-message', '重大なシステムエラーが発生しました！\nすぐにシステムを再起動してください。');
+            errorMessage.id = 'fakeErrorMessage';
+            document.body.appendChild(errorMessage);
+        }
+
+        /**
+         * Simulates system slowdown by adding a delay to user interactions.
+         */
+        function activateSlowdownVirus() {
+            if (activeEffects.slowdown) return;
+            activeEffects.slowdown = true;
+
+            const slowdownOverlay = createElement('div', 'slowdown-overlay');
+            slowdownOverlay.id = 'slowdownOverlay';
+            document.body.appendChild(slowdownOverlay);
+
+            // Store original functions before overriding
+            EventTarget.prototype._originalAddEventListener = EventTarget.prototype.addEventListener;
+            EventTarget.prototype._originalRemoveEventListener = EventTarget.prototype.removeEventListener;
+
+            EventTarget.prototype.addEventListener = function(type, listener, options) {
+                if (type === 'click' || type === 'keydown') {
+                    const delayedListener = function(event) {
+                        event.stopPropagation();
+                        setTimeout(() => {
+                            listener.call(this, event);
+                        }, getRandomInt(500, 2000));
+                    };
+                    this.originalListener = listener;
+                    this.delayedListener = delayedListener;
+                    EventTarget.prototype._originalAddEventListener.call(this, type, delayedListener, options);
+                } else {
+                    EventTarget.prototype._originalAddEventListener.call(this, type, listener, options);
+                }
+            };
+
+            EventTarget.prototype.removeEventListener = function(type, listener, options) {
+                if (type === 'click' || type === 'keydown') {
+                    if (this.delayedListener && this.originalListener === listener) {
+                        EventTarget.prototype._originalRemoveEventListener.call(this, type, this.delayedListener, options);
+                    } else {
+                        EventTarget.prototype._originalRemoveEventListener.call(this, type, listener, options);
+                    }
+                } else {
+                    EventTarget.prototype._originalRemoveEventListener.call(this, type, listener, options);
+                }
+            };
+        }
+
+        /**
+         * Activates mouse corruption effect (hides real cursor, shows multiple fake ones).
+         */
+        function activateJitterCursor() { // Renamed from activateJitterCursor to reflect new functionality
+            if (activeEffects.mouseCorruption) return;
+            activeEffects.mouseCorruption = true;
+
+            body.classList.add('corrupted-cursor'); // Hide real cursor
+
+            mouseCorruptionIntervalId = setInterval(() => {
+                if (extraCursors.length < 5) {
+                    const newCursor = document.createElement('div');
+                    newCursor.className = 'extra-cursor';
+                    document.body.appendChild(newCursor);
+                    extraCursors.push(newCursor);
+                }
+
+                extraCursors.forEach(cursor => {
+                    const x = Math.random() * window.innerWidth;
+                    const y = Math.random() * window.innerHeight;
+                    cursor.style.left = `${x}px`;
+                    cursor.style.top = `${y}px`;
+                });
+            }, 100); // 100msごとにカーソルを更新
+        }
+
+        /**
+         * Scrambles or unscrambles the text content of a given element.
+         * Manages its own interval and original text.
+         * @param {HTMLElement} element - The element whose text content to scramble/unscramble.
+         */
+        function toggleScrambleElement(element) {
+            if (scrambleIntervals.has(element)) {
+                // Effect is active, so stop it
+                clearInterval(scrambleIntervals.get(element));
+                scrambleIntervals.delete(element);
+                
+                // Restore original text
+                const originalText = originalScrambledElements.get(element);
+                if (originalText !== undefined) {
+                    // Recursively restore text nodes
+                    function restoreTextNodes(el, originalContent) {
+                        let textNodeIndex = 0;
+                        el.childNodes.forEach(node => {
+                            if (node.nodeType === Node.TEXT_NODE && node.textContent.trim().length > 0) {
+                                // Find the corresponding original text content for this text node
+                                // This is a simplified approach; for complex HTML, a more robust mapping might be needed.
+                                // For now, we assume direct text content restoration based on the element's original content.
+                                // A more precise way would be to store individual text node original content in the map.
+                                // For simplicity, we'll just restore the element's direct text.
+                                node.textContent = originalContent.textNodes[textNodeIndex];
+                                textNodeIndex++;
+                            } else if (node.nodeType === Node.ELEMENT_NODE) {
+                                // Recursively call for child elements, passing relevant part of originalContent
+                                restoreTextNodes(node, originalContent.children[node.dataset.originalIndex]);
+                            }
+                        });
+                    }
+
+                    // For now, let's simplify and just restore the element's direct text content if it's a simple text element
+                    // For complex elements like contentToScramble, we need to iterate through its original map.
+                    // Let's refine originalScrambledElements to store a structure that allows precise restoration.
+
+                    // Simpler restoration for the top-level element for now
+                    if (element === mainTitle) {
+                        element.textContent = originalMainTitleText;
+                    } else if (element === mainDescription) {
+                        element.innerHTML = originalMainDescriptionHTML; // Use innerHTML for description
+                    } else { // For contentToScramble and its children
+                        // This part needs to iterate through the map to restore individual text nodes
+                        originalScrambledElements.forEach((originalNodeText, node) => {
+                            if (element.contains(node)) { // Only restore nodes within the target element
+                                node.textContent = originalNodeText;
+                                if (node.parentElement) {
+                                    node.parentElement.classList.remove('scrambled-text');
+                                }
+                            }
+                        });
+                    }
+                    originalScrambledElements.delete(element); // Remove the element from the map
+                }
+                element.classList.remove('scrambled-text'); // Remove class from parent
+            } else {
+                // Effect is inactive, so start it
+                // Store original text for all relevant text nodes within the element
+                function findAndStoreTextNodes(el) {
+                    el.childNodes.forEach(node => {
+                        if (node.nodeType === Node.TEXT_NODE && node.textContent.trim().length > 0) {
+                            if (!originalScrambledElements.has(node)) { // Only store if not already tracked
+                                originalScrambledElements.set(node, node.textContent);
+                            }
+                            if (node.parentElement) {
+                                node.parentElement.classList.add('scrambled-text');
+                            }
+                        } else if (node.nodeType === Node.ELEMENT_NODE) {
+                            findAndStoreTextNodes(node);
+                        }
+                    });
+                }
+                findAndStoreTextNodes(element);
+
+                const intervalId = setInterval(() => {
+                    originalScrambledElements.forEach((originalText, node) => {
+                        if (element.contains(node)) { // Only scramble nodes within the target element
+                            let scrambled = '';
+                            for (let i = 0; i < originalText.length; i++) {
+                                if (Math.random() < 0.5) {
+                                    scrambled += String.fromCharCode(Math.floor(Math.random() * (126 - 33 + 1)) + 33);
+                                } else {
+                                    scrambled += originalText[i];
+                                }
+                            }
+                            node.textContent = scrambled;
+                        }
+                    });
+                }, 100); // 100msごとにスクランブル
+                scrambleIntervals.set(element, intervalId);
+            }
+            activeEffects.scrambleText = scrambleIntervals.size > 0; // Update overall scramble state
+        }
+
+
+        /**
+         * Activates full-screen shake effect.
+         */
+        function activateFullScreenShake() {
+            if (activeEffects.fullScreenShake) return;
+            activeEffects.fullScreenShake = true;
+            body.classList.add('full-screen-shake-active');
+        }
+
+        /**
+         * Activates screen color inversion and flicker effects.
+         */
+        function activateColorEffects() {
+            if (activeEffects.colorEffects) return;
+            activeEffects.colorEffects = true;
+
+            colorFlickerIntervalId = setInterval(() => {
+                if (Math.random() < 0.3) { // 30%の確率で色反転
+                    body.classList.toggle('invert-colors');
+                }
+                if (Math.random() < 0.5) { // 50%の確率で点滅
+                    body.classList.toggle('flicker-colors');
+                }
+            }, 150); // 150msごとにチェック
+        }
+
+        /**
+         * Activates unpleasant system noise sounds.
+         */
+        async function activateSystemNoise() {
+            if (activeEffects.systemNoise) return;
+            activeEffects.systemNoise = true;
+            await setupAudio(); // Ensure audio context is running
+
+            activeEffects.noiseInterval = setInterval(() => {
+                if (Math.random() < 0.3) { // 30%の確率でノイズ
+                    noiseSynth.triggerAttackRelease("8n");
+                }
+                if (Math.random() < 0.1) { // 10%の確率でクリック音
+                    clickSound.triggerAttackRelease("C2", "16n");
+                }
+            }, 200); // 200msごとにチェック
+        }
+
+        /**
+         * Activates fake shutdown overlay.
+         */
+        function activateFakeShutdown() {
+            if (activeEffects.fakeShutdown || bsodOverlay.classList.contains('active') || progressOverlay.classList.contains('active')) return;
+            activeEffects.fakeShutdown = true;
+
+            // 一時的に他のウイルス効果を停止
+            pauseAllActiveEffects();
+
+            fakeShutdownOverlay.classList.add('active');
+
+            setTimeout(() => {
+                fakeShutdownOverlay.classList.remove('active');
+                activeEffects.fakeShutdown = false;
+                resumeAllActiveEffects(); // 効果を再開
+            }, 5000); // 5秒後に復帰
+        }
+
+        /**
+         * Activates fake Blue Screen of Death (BSOD) overlay.
+         */
+        function activateBSOD() {
+            if (activeEffects.bsod || fakeShutdownOverlay.classList.contains('active') || progressOverlay.classList.contains('active')) return;
+            activeEffects.bsod = true;
+
+            pauseAllActiveEffects();
+
+            bsodOverlay.classList.add('active');
+            let progress = 0;
+            activeEffects.bsodProgressInterval = setInterval(() => {
+                progress += getRandomInt(1, 5);
+                if (progress >= 100) {
+                    progress = 100;
+                    clearInterval(activeEffects.bsodProgressInterval);
+                    setTimeout(() => {
+                        bsodOverlay.classList.remove('active');
+                        activeEffects.bsod = false;
+                        resumeAllActiveEffects();
+                    }, 2000); // 2秒後にBSODを解除
+                }
+                bsodProgress.textContent = progress;
+            }, 100);
+        }
+
+        /**
+         * Activates fake file deletion/scan progress bar overlay.
+         */
+        function activateProgressBar() {
+            if (activeEffects.progressBar || fakeShutdownOverlay.classList.contains('active') || bsodOverlay.classList.contains('active')) return;
+            activeEffects.progressBar = true;
+
+            pauseAllActiveEffects();
+
+            const actions = [
+                { title: "ファイルをスキャン中...", status: "C:\\Windows\\System32\\drivers\\*.sys" },
+                { title: "システム整合性を確認中...", status: "レジストリキーを検証中..." },
+                { title: "不要なファイルを削除中...", status: "一時ファイルをクリア中..." },
+                { title: "ウイルスを隔離中...", status: "感染ファイルを分析中..." },
+                { title: "システムを最適化中...", status: "ディスクデフラグを実行中..." }
+            ];
+
+            let currentActionIndex = 0;
+            progressOverlay.classList.add('active');
+            progressFill.style.animationPlayState = 'running';
+
+            const updateProgressBar = () => {
+                const currentAction = actions[currentActionIndex];
+                progressTitle.textContent = currentAction.title;
+                progressStatus.textContent = currentAction.status;
+
+                currentActionIndex = (currentActionIndex + 1) % actions.length;
+
+                progressFill.style.animation = 'none';
+                void progressFill.offsetWidth;
+                progressFill.style.animation = 'progress-fill-animation 3s linear infinite';
+            };
+
+            updateProgressBar();
+            activeEffects.progressBarInterval = setInterval(updateProgressBar, 3000);
+
+            setTimeout(() => {
+                clearInterval(activeEffects.progressBarInterval);
+                progressOverlay.classList.remove('active');
+                progressFill.style.animationPlayState = 'paused';
+                activeEffects.progressBar = false;
+                resumeAllActiveEffects();
+            }, 15000); // 15秒後にプログレスバーを解除
+        }
+
+
+        // --- Pause/Resume All Effects ---
+        function pauseAllActiveEffects() {
+            // Pause visual effects
+            body.classList.remove('full-screen-shake-active', 'invert-colors', 'flicker-colors', 'corrupted-cursor');
+            glitchOverlay.classList.remove('glitch-active');
+            clearInterval(mouseCorruptionIntervalId);
+            extraCursors.forEach(cursor => cursor.remove());
+            extraCursors = [];
+            clearInterval(colorFlickerIntervalId);
+            
+            // Stop all active text scrambles
+            scrambleIntervals.forEach((intervalId, element) => {
+                clearInterval(intervalId);
+            });
+            scrambleIntervals.clear(); // Clear the map of intervals
+            // Restore original text for all scrambled elements
+            originalScrambledElements.forEach((originalText, node) => {
+                node.textContent = originalText;
+                if (node.parentElement) {
+                    node.parentElement.classList.remove('scrambled-text');
+                }
+            });
+            originalScrambledElements.clear(); // Clear the map of original texts
+
+
+            // Pause audio effects
+            if (synth && Tone.Transport.state === "started") {
+                Tone.Transport.stop();
+                Tone.Transport.cancel();
+            }
+            clearInterval(activeEffects.noiseInterval);
+
+            // Pause popups
+            clearInterval(activeEffects.popupInterval);
+            activeEffects.activePopups.forEach(popup => {
+                if (popup.animationFrameId) {
+                    cancelAnimationFrame(popup.animationFrameId);
+                }
+            });
+        }
+
+        function resumeAllActiveEffects() {
+            // Resume visual effects if they were active
+            if (activeEffects.fullScreenShake) body.classList.add('full-screen-shake-active');
+            if (activeEffects.glitch) glitchOverlay.classList.add('glitch-active');
+            if (activeEffects.colorEffects) {
+                colorFlickerIntervalId = setInterval(() => {
+                    if (Math.random() < 0.3) body.classList.toggle('invert-colors');
+                    if (Math.random() < 0.5) body.classList.toggle('flicker-colors');
+                }, 150);
+            }
+            if (activeEffects.mouseCorruption) {
+                body.classList.add('corrupted-cursor');
+                mouseCorruptionIntervalId = setInterval(() => {
+                    if (extraCursors.length < 5) {
+                        const newCursor = document.createElement('div');
+                        newCursor.className = 'extra-cursor';
+                        document.body.appendChild(newCursor);
+                        extraCursors.push(newCursor);
+                    }
+                    extraCursors.forEach(cursor => {
+                        const x = Math.random() * window.innerWidth;
+                        const y = Math.random() * window.innerHeight;
+                        cursor.style.left = `${x}px`;
+                        cursor.style.top = `${y}px`;
+                    });
+                }, 100);
+            }
+            // Re-scramble elements that were previously scrambled (except contentToScramble if its button was off)
+            if (activeEffects.scrambleText) { // This now means contentToScramble was active
+                toggleScrambleElement(contentToScramble); // Toggle it back on
+            }
+            // Always re-scramble main title/description if they are part of the global "activate all"
+            // For this implementation, they are not part of the individual toggle but the global activate/fix.
+            // So, they should be re-scrambled here if the overall "scramble" effect is desired globally.
+            // Let's assume they are part of the "scrambleTextBtn" effect, so only contentToScramble is affected.
+            // If they were meant to be scrambled by default when any effect is active, that logic needs to be added.
+
+
+            // Resume audio effects if they were active
+            if (activeEffects.systemNoise) {
+                setupAudio(); // Ensure audio context is running
+                activeEffects.noiseInterval = setInterval(() => {
+                    if (Math.random() < 0.3) noiseSynth.triggerAttackRelease("8n");
+                    if (Math.random() < 0.1) clickSound.triggerAttackRelease("C2", "16n");
+                }, 200);
+            }
+            if (activeEffects.alarmStarted) { // Re-start main alarm if it was active
+                setupAudio();
+                Tone.Transport.scheduleRepeat((time) => {
+                    synth.triggerAttackRelease("C4", "8n", time);
+                    synth.triggerAttackRelease("F#3", "8n", time + Tone.Time("8n").toSeconds());
+                }, "4n");
+                Tone.Transport.start();
+            }
+
+
+            // Resume popups if they were active
+            if (activeEffects.popup) {
+                activeEffects.popupInterval = setInterval(() => {
+                    createAndShowPopup();
+                }, 80);
+            }
+            activeEffects.activePopups.forEach(popup => {
+                if (popup.animationFrameId) {
+                    popup.animationFrameId = requestAnimationFrame(function animate() {
+                        requestAnimationFrame(animate);
+                    });
+                }
+            });
+        }
+
+
+        // --- Cleanup Function ---
+
+        /**
+         * Cleans up all active virus effects.
+         */
+        function cleanUpAllEffects() {
+            // Stop all intervals and remove classes/elements
+            pauseAllActiveEffects(); // Pause all effects first
+
+            // Specific cleanup for each effect that pauseAllActiveEffects doesn't fully reset
+            // Pop-up Virus Cleanup
+            clearInterval(activeEffects.popupInterval);
+            activeEffects.activePopups.forEach(popup => {
+                cancelAnimationFrame(popup.animationFrameId); // Stop animation
+                if (popup.parentNode) popup.remove();
+            });
+            activeEffects.activePopups = [];
+            activeEffects.popup = false;
+
+            // Glitch Virus Cleanup (already handled by pauseAllActiveEffects for class removal)
+            activeEffects.glitch = false;
+
+            // Error Message Cleanup
+            removeElementById('fakeErrorMessage');
+            activeEffects.error = false;
+
+            // Slowdown Virus Cleanup
+            removeElementById('slowdownOverlay');
+            if (EventTarget.prototype._originalAddEventListener) { // Check if overridden
+                EventTarget.prototype.addEventListener = EventTarget.prototype._originalAddEventListener;
+                EventTarget.prototype.removeEventListener = EventTarget.prototype._originalRemoveEventListener;
+                delete EventTarget.prototype._originalAddEventListener;
+                delete EventTarget.prototype._originalRemoveEventListener;
+            }
+            activeEffects.slowdown = false;
+
+            // Cursor Jitter / Mouse Corruption Cleanup (already handled by pauseAllActiveEffects)
+            activeEffects.jitterCursor = false; // Old
+            activeEffects.mouseCorruption = false; // New
+
+            // Text Scramble Cleanup (already handled by pauseAllActiveEffects)
+            originalScrambledElements.clear(); // Ensure map is clear
+            scrambleIntervals.clear(); // Ensure intervals map is clear
+            activeEffects.scrambleText = false; // Reset state for contentToScramble
+
+            // Full Screen Shake Cleanup (already handled by pauseAllActiveEffects)
+            activeEffects.fullScreenShake = false;
+
+            // Color Effects Cleanup (already handled by pauseAllActiveEffects)
+            activeEffects.colorEffects = false;
+
+            // System Noise Cleanup (already handled by pauseAllActiveEffects)
+            activeEffects.systemNoise = false;
+            activeEffects.alarmStarted = false; // Reset alarm state
+
+            // Fake Shutdown Cleanup
+            fakeShutdownOverlay.classList.remove('active');
+            activeEffects.fakeShutdown = false;
+
+            // BSOD Cleanup
+            bsodOverlay.classList.remove('active');
+            clearInterval(activeEffects.bsodProgressInterval);
+            bsodProgress.textContent = '0'; // Reset progress
+            activeEffects.bsod = false;
+
+            // Progress Bar Cleanup
+            progressOverlay.classList.remove('active');
+            clearInterval(activeEffects.progressBarInterval);
+            progressFill.style.animationPlayState = 'paused'; // Pause animation
+            progressFill.style.width = '0%'; // Reset fill
+            activeEffects.progressBar = false;
+
+            // Restore main content text (ensure these are always reset)
+            mainTitle.textContent = originalMainTitleText;
+            mainDescription.innerHTML = originalMainDescriptionHTML;
+
+            // Clear all active effects state (ensure it's completely empty)
+            for (const key in activeEffects) {
+                if (activeEffects.hasOwnProperty(key)) {
+                    delete activeEffects[key];
+                }
+            }
+            activeEffects.activePopups = []; // Re-initialize for next use
+        }
+
+        // --- Event Listeners ---
+        popupVirusBtn.addEventListener('click', activatePopupVirus);
+        glitchVirusBtn.addEventListener('click', activateGlitchVirus);
+        errorVirusBtn.addEventListener('click', activateErrorVirus);
+        slowdownVirusBtn.addEventListener('click', activateSlowdownVirus);
+        jitterCursorBtn.addEventListener('click', activateJitterCursor);
+        scrambleTextBtn.addEventListener('click', () => toggleScrambleElement(contentToScramble)); // Use the new toggle function
+        fullScreenShakeBtn.addEventListener('click', activateFullScreenShake);
+        colorEffectBtn.addEventListener('click', activateColorEffects);
+        systemNoiseBtn.addEventListener('click', activateSystemNoise);
+        fakeShutdownBtn.addEventListener('click', activateFakeShutdown);
+        bsodBtn.addEventListener('click', activateBSOD);
+        progressBarBtn.addEventListener('click', activateProgressBar);
+        cleanBtn.addEventListener('click', cleanUpAllEffects);
+
+        // Initial cleanup on load to ensure a clean state
+        window.onload = () => {
+            activeEffects.activePopups = []; // Initialize the array
+            cleanUpAllEffects();
+        };
+
+        // Ensure Tone.js context is started on user interaction for all audio effects
+        document.addEventListener('click', setupAudio, { once: true });
+        document.addEventListener('keydown', setupAudio, { once: true });
+    </script>
+</body>
+</html>
